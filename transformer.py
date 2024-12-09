@@ -1,32 +1,58 @@
 import faiss
 from sentence_transformers import SentenceTransformer
 import pickle
+import nltk
+from nltk.corpus import stopwords
+import re
+import string
 
-# 初始化模型
+# 初始化
+nltk.download('punkt')
+nltk.download('stopwords')
+stop_words = set(stopwords.words("english"))  # 停用詞表（可擴展）
+custom_noise_words = {"ah", "um", "oh", "hmm"}  # 自定義不需要的詞
 model = SentenceTransformer('all-MiniLM-L6-v2')
-#使用 sentence-transformers 提供的預訓練模型，將文本轉換為固定維度的向量
-    
-# 從文本檔案中讀取內容
+
+# 讀取文本檔案
 input_file = "AI文本.txt"  # 替換為您的文本檔案名稱
 with open(input_file, "r", encoding="utf-8") as f:
-    texts = [line.strip() for line in f if line.strip()]  # 移除空行
-#逐行讀取文本檔案。清除每行前後的空白，並忽略空行。
+    raw_texts = [line.strip() for line in f if line.strip()]  # 移除空行
+
+# 清理和處理文本的函數
+def preprocess_text(text):
+    # 句子分割
+    sentences = nltk.sent_tokenize(text)
+    processed_sentences = []
+    for sentence in sentences:
+        # 小寫化
+        sentence = sentence.lower()
+        # 移除標點符號
+        sentence = sentence.translate(str.maketrans("", "", string.punctuation))
+        # 移除不需要的詞
+        words = sentence.split()
+        filtered_words = [
+            word for word in words if word not in stop_words and word not in custom_noise_words
+        ]
+        if filtered_words:
+            processed_sentences.append(" ".join(filtered_words))
+    return processed_sentences
+
+# 處理所有文本
+processed_texts = []
+for text in raw_texts:
+    processed_texts.extend(preprocess_text(text))
 
 # 將文本轉換為向量
-embeddings = model.encode(texts)
-#使用模型將文本轉換為嵌入向量（即高維向量表示）。這些向量捕捉了文本的語義信息，可以用於比較相似度
+embeddings = model.encode(processed_texts)
 
 # 建立 FAISS 索引
 dimension = embeddings.shape[1]
 index = faiss.IndexFlatL2(dimension)
 index.add(embeddings)
-#使用 FAISS 創建一個基於 L2 距離（歐氏距離）的索引。將生成的向量加入到索引中。
 
 # 儲存索引和文本
 faiss.write_index(index, "vector_index.faiss")
-with open("texts.pkl", "wb") as f:
-    pickle.dump(texts, f)
-#faiss.write_index 將索引存儲到檔案中，用於後續查詢。
-#使用 pickle 將文本列表存儲到檔案，保持向量與原始文本的對應關係。
+with open("processed_texts.pkl", "wb") as f:
+    pickle.dump(processed_texts, f)
 
-print(f"向量和文本已儲存完成！處理的文本數量: {len(texts)}")
+print(f"向量和文本已儲存完成！處理的文本數量: {len(processed_texts)}")
